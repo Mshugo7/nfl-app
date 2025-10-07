@@ -29,7 +29,7 @@
     </div>
     <script>
         // ¡IMPORTANTE! Dejamos este espacio listo.
-        const BACKEND_URL = 'URL_DEL_BACKEND_DE_RENDER_IRA_AQUI'; 
+        const BACKEND_URL = 'https://nfl-props-backend.onrender.com'; 
 
         let state = { upcomingGames: [], selectedGameId: null, playerProps: {}, loadingMessage: 'Inicializando...', error: null };
         async function initialLoad() { try { updateLoadingMessage('Buscando partidos en vivo...'); const gamesResponse = await fetch(`${BACKEND_URL}/api/games`); if (!gamesResponse.ok) throw new Error('No se pudo conectar al servidor. Asegúrate de que esté corriendo y la URL sea correcta.'); state.upcomingGames = await gamesResponse.json(); renderApp(); if (state.upcomingGames.length > 0) { await handleGameChange(state.upcomingGames[0].id); } else { updateLoadingMessage('No hay partidos próximos con datos disponibles.'); renderApp(); } } catch (error) { console.error("Error en la carga inicial:", error); state.error = error.message; renderApp(); } }
@@ -40,4 +40,5 @@
     </script>
 </body>
 </html>
+
 
