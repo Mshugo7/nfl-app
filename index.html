@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NFL Props Dashboard - Real & Live</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .loader-container { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; }
+        .loader { border: 4px solid #4B5563; border-top: 4px solid #10B981; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .chart-bar-container { height: 100%; position: relative; background-color: rgba(255, 255, 255, 0.05); border-radius: 4px 4px 0 0; }
+        .chart-bar { position: absolute; bottom: 0; left: 0; right: 0; transition: height 0.3s ease-out; }
+        .prop-line { position: absolute; left: 0; right: 0; border-top: 2px dashed rgba(251, 191, 36, 0.8); z-index: 5; }
+        .tooltip { visibility: hidden; opacity: 0; transition: opacity 0.2s; }
+        .group:hover .tooltip { visibility: visible; opacity: 1; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200">
+    <div id="app">
+        <div class="loader-container">
+            <div class="loader"></div>
+            <p id="loading-message" class="text-gray-400 mt-4 text-center">Contactando al servidor...</p>
+        </div>
+    </div>
+    <script>
+        // ¡IMPORTANTE! Dejamos este espacio listo.
+        const BACKEND_URL = 'URL_DEL_BACKEND_DE_RENDER_IRA_AQUI'; 
+
+        let state = { upcomingGames: [], selectedGameId: null, playerProps: {}, loadingMessage: 'Inicializando...', error: null };
+        async function initialLoad() { try { updateLoadingMessage('Buscando partidos en vivo...'); const gamesResponse = await fetch(`${BACKEND_URL}/api/games`); if (!gamesResponse.ok) throw new Error('No se pudo conectar al servidor. Asegúrate de que esté corriendo y la URL sea correcta.'); state.upcomingGames = await gamesResponse.json(); renderApp(); if (state.upcomingGames.length > 0) { await handleGameChange(state.upcomingGames[0].id); } else { updateLoadingMessage('No hay partidos próximos con datos disponibles.'); renderApp(); } } catch (error) { console.error("Error en la carga inicial:", error); state.error = error.message; renderApp(); } }
+        async function handleGameChange(gameId) { state.selectedGameId = gameId; state.playerProps = {}; updateLoadingMessage(`Cargando props para el partido...`); renderApp({ showPropsLoader: true }); try { const propsResponse = await fetch(`${BACKEND_URL}/api/props/${gameId}`); if (!propsResponse.ok) throw new Error('El servidor no pudo obtener los props.'); state.playerProps = await propsResponse.json(); if (Object.keys(state.playerProps).length === 0) { state.playerProps = { error: 'No hay props de jugador disponibles para este partido todavía.' }; } } catch (error) { console.error("Error al cargar props:", error); state.playerProps = { error: error.message }; } finally { renderApp(); } }
+        function updateLoadingMessage(msg) { state.loadingMessage = msg; const el = document.getElementById('loading-message'); if (el) el.textContent = msg; }
+        function renderApp(options = {}) { const appContainer = document.getElementById('app'); if (state.error) { appContainer.innerHTML = `<div class="fixed inset-0 bg-red-800 text-white flex items-center justify-center p-4 text-center text-xl">${state.error}</div>`; return; } const isLoading = !state.selectedGameId && state.upcomingGames.length === 0; if (isLoading && !state.error) { appContainer.innerHTML = `<div class="loader-container"><div class="loader"></div><p id="loading-message" class="text-gray-400 mt-4 text-center px-4">${state.loadingMessage}</p></div>`; return; } appContainer.innerHTML = ` <header class="bg-gray-800 p-4 flex flex-col md:flex-row justify-between items-center shadow-lg sticky top-0 z-10 gap-4"> <h1 class="text-xl font-bold text-green-400 shrink-0"><span class="text-white">NFL</span> Props<span class="text-green-400">.</span>Analyzer</h1> <select onchange="handleGameChange(this.value)" class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-green-500 block w-full max-w-lg p-2.5"> ${state.upcomingGames.map(game => `<option value="${game.id}" ${game.id === state.selectedGameId ? 'selected' : ''}>${game.away_team} @ ${game.home_team}</option>`).join('')} ${state.upcomingGames.length === 0 ? `<option>${state.loadingMessage}</option>` : ''} </select> </header> <main id="main-content" class="p-4 md:p-8"></main> `; const mainContent = document.getElementById('main-content'); if (options.showPropsLoader || Object.keys(state.playerProps).length === 0 && !state.playerProps.error) { mainContent.innerHTML = `<div class="flex flex-col items-center justify-center py-20"><div class="loader"></div><p class="text-gray-400 mt-4 text-center px-4">${state.loadingMessage}</p></div>`; } else if (state.playerProps.error) { mainContent.innerHTML = `<div class="text-center text-gray-400 bg-gray-800 p-6 rounded-lg">${state.playerProps.error}</div>`; } else { mainContent.innerHTML = Object.entries(state.playerProps).map(([playerName, markets]) => { return ` <div class="bg-gray-800 p-6 rounded-lg shadow-lg mb-6"> <h2 class="text-2xl font-bold text-white mb-4">${playerName}</h2> <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"> ${Object.entries(markets).map(([marketKey, marketData]) => { const over = marketData.outcomes.find(o => o.name === 'Over'); const under = marketData.outcomes.find(o => o.name === 'Under'); const propLine = over ? over.point : 0; const historicalStats = marketData.historical; let analysisHtml = '<div class="p-4 text-center text-gray-500 text-sm">No hay datos históricos para este jugador/prop.</div>'; if (historicalStats && propLine) { const gameLog = historicalStats.gameLog; const last10 = gameLog.slice(-10); const avg10 = (last10.reduce((s, g) => s + g.value, 0) / last10.length).toFixed(1); const overCount10 = last10.filter(g => g.value > propLine).length; const hitRate10 = ((overCount10 / last10.length) * 100).toFixed(0); const maxVal = Math.max(...last10.map(g => g.value), propLine) * 1.2; analysisHtml = ` <div class="grid grid-cols-2 gap-4 text-center"> <div><p class="text-sm text-gray-400">Promedio (10 J)</p><p class="text-xl font-bold ${avg10 > propLine ? 'text-green-400' : 'text-red-400'}">${avg10}</p></div> <div><p class="text-sm text-gray-400">Tasa Acierto</p><p class="text-xl font-bold text-green-400">${hitRate10}%</p></div> </div> <div class="h-48 mt-4 flex items-end gap-1"> <div class="h-full w-12 text-xs text-gray-500 flex flex-col justify-between items-end pr-2 relative shrink-0"><span>${Math.ceil(maxVal)}</span><div class="absolute w-full text-right transform -translate-y-1/2" style="bottom: ${(propLine / maxVal) * 100}%;"><span class="bg-gray-700 px-1 text-yellow-400">${propLine}</span></div><span>0</span></div> <div class="flex-grow h-full flex justify-between items-end gap-1 md:gap-2 border-b border-gray-700 pb-1">${last10.map(game => `<div class="flex-1 h-full flex flex-col justify-end items-center group relative"><div class="absolute -top-5 bg-gray-600 text-white text-xs px-2 py-1 rounded-md tooltip">${game.value}</div><div class="w-full chart-bar ${game.value >= propLine ? 'bg-green-500' : 'bg-red-500'}" style="height: ${(game.value / maxVal) * 100}%;"></div></div>`).join('')}</div> </div>`; } return `<div class="bg-gray-700 rounded-lg p-4 flex flex-col"><h3 class="text-md font-semibold text-green-400">${historicalStats?.displayName || marketKey.replace('player_','').replace(/_/g,' ')}</h3><p class="text-3xl font-bold text-white text-center my-2">${propLine}</p><div class="flex justify-around text-center mb-4"><div><span class="text-xs text-gray-400">OVER</span><p class="font-bold text-lg">${over ? over.price : 'N/A'}</p></div><div><span class="text-xs text-gray-400">UNDER</span><p class="font-bold text-lg">${under ? under.price : 'N/A'}</p></div></div><div class="border-t border-gray-600 pt-4 mt-auto">${analysisHtml}</div></div>`; }).join('')} </div> </div> `; }).join(''); } }
+        document.addEventListener('DOMContentLoaded', initialLoad);
+    </script>
+</body>
+</html>
+
