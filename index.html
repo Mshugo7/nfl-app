@@ -3,37 +3,65 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NFL Props Dashboard - Definitive Version</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+    <title>NFL Props Dashboard - Real & Live</title>
+    <!-- ... (El head es igual que antes) ... -->
     <style>
-        body { font-family: 'Inter', sans-serif; }
-        .loader { border: 4px solid #4B5563; border-top: 4px solid #10B981; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .chart-bar-container { height: 100%; position: relative; background-color: rgba(255, 255, 255, 0.05); border-radius: 4px 4px 0 0; }
-        .chart-bar { position: absolute; bottom: 0; left: 0; right: 0; transition: height 0.3s ease-out; }
-        .prop-line { position: absolute; left: 0; right: 0; border-top: 2px dashed rgba(251, 191, 36, 0.8); z-index: 5; }
-        .tooltip { visibility: hidden; opacity: 0; transition: opacity 0.2s; }
-        .group:hover .tooltip { visibility: visible; opacity: 1; }
+        /* ... (Los estilos son iguales que antes) ... */
     </style>
 </head>
 <body class="bg-gray-900 text-gray-200">
     <div id="app">
-        <div class="flex justify-center items-center h-screen"><div class="loader"></div></div>
+        <div class="loader-container">
+            <div class="loader"></div>
+            <p id="loading-message" class="text-gray-400 mt-4 text-center">Contactando al servidor...</p>
+        </div>
     </div>
 
     <script>
-        // ¡IMPORTANTE! Usa la URL de tu backend de Render aquí.
-        const BACKEND_URL = 'https://nfl-props-backend.onrender.com';
+        const BACKEND_URL = 'https://nfl-props-backend.onrender.com'; // USA TU URL REAL
 
-        let state = { teams: [], players: {}, selectedTeamId: null, selectedPlayerId: null, selectedStatKey: null, loading: true, error: null };
+        let state = { teams: [], players: {}, selectedTeamId: null, selectedPlayerId: null, selectedStatKey: null, loading: true, error: null, loadingMessage: 'Contactando al servidor...' };
         
         async function initialLoad() {
             try {
+                // Inicia el proceso de sondeo para ver si el servidor está listo
+                pollServerStatus();
+            } catch (error) {
+                state.error = "Ocurrió un error inesperado al iniciar la aplicación.";
+                renderApp();
+            }
+        }
+
+        async function pollServerStatus() {
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/status`);
+                if (!response.ok) throw new Error('El servidor no responde. Puede que esté arrancando o haya un problema.');
+                
+                const data = await response.json();
+                updateLoadingMessage(data.message);
+
+                if (data.status === 'ready') {
+                    // ¡El servidor está listo! Obtenemos los datos.
+                    await fetchData();
+                } else if (data.status === 'loading') {
+                    // El servidor sigue trabajando, volvemos a preguntar en 5 segundos.
+                    setTimeout(pollServerStatus, 5000);
+                } else {
+                    // El servidor reportó un error.
+                    throw new Error(data.message);
+                }
+            } catch (error) {
+                 console.error("Error de sondeo:", error);
+                 state.error = error.message;
+                 renderApp();
+            }
+        }
+        
+        async function fetchData() {
+            try {
+                updateLoadingMessage('Descargando base de datos de la NFL...');
                 const response = await fetch(`${BACKEND_URL}/api/data`);
-                if (!response.ok) throw new Error('No se pudo conectar al servidor. Asegúrate de que esté desplegado y la URL sea correcta.');
+                 if (!response.ok) throw new Error('No se pudieron descargar los datos del servidor.');
                 const data = await response.json();
                 
                 state.teams = data.teams;
@@ -48,100 +76,21 @@
                     }
                 }
             } catch (error) {
-                console.error("Error al cargar datos:", error);
+                 console.error("Error al obtener datos:", error);
                 state.error = error.message;
             } finally {
                 state.loading = false;
                 renderApp();
             }
         }
-        
+
+        // ... (El resto de funciones: handleTeamChange, renderApp, etc. son iguales que antes)
         function handleTeamChange(teamId) { state.selectedTeamId = teamId; const teamPlayers = Object.values(state.players).filter(p => p.teamId === teamId).sort((a,b) => a.name.localeCompare(b.name)); if (teamPlayers.length > 0) { state.selectedPlayerId = teamPlayers[0].id; state.selectedStatKey = Object.keys(teamPlayers[0].stats)[0]; } else { state.selectedPlayerId = null; state.selectedStatKey = null; } renderApp(); }
         function handlePlayerChange(playerId) { state.selectedPlayerId = playerId; state.selectedStatKey = Object.keys(state.players[playerId].stats)[0]; renderApp(); }
         function handleStatChange(statKey) { state.selectedStatKey = statKey; renderApp(); }
-        
-        function renderApp() {
-            const appContainer = document.getElementById('app');
-            let content;
-            if (state.loading) { content = `<div class="flex justify-center items-center h-screen"><div class="loader"></div></div>`; }
-            else if (state.error) { content = `<div class="fixed inset-0 bg-red-800 text-white flex items-center justify-center p-4 text-center text-xl">${state.error}</div>`; }
-            else {
-                const teamPlayers = Object.values(state.players).filter(p => p.teamId === state.selectedTeamId).sort((a,b) => a.name.localeCompare(b.name));
-                const selectedPlayer = state.players[state.selectedPlayerId];
-                content = `
-                    <header class="bg-gray-800 p-4 flex flex-col md:flex-row justify-between items-center shadow-lg sticky top-0 z-10 gap-4">
-                        <h1 class="text-xl font-bold text-green-400 shrink-0"><span class="text-white">NFL</span> Props<span class="text-green-400">.</span>Analyzer</h1>
-                        <div class="flex items-center space-x-2 w-full max-w-lg">
-                            <select onchange="handleTeamChange(this.value)" class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-green-500 block w-full p-2.5">
-                                ${state.teams.map(t => `<option value="${t.id}" ${t.id === state.selectedTeamId ? 'selected' : ''}>${t.name}</option>`).join('')}
-                            </select>
-                            <select onchange="handlePlayerChange(this.value)" class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-green-500 block w-full p-2.5" ${!teamPlayers.length ? 'disabled' : ''}>
-                                ${teamPlayers.length ? teamPlayers.map(p => `<option value="${p.id}" ${p.id === state.selectedPlayerId ? 'selected' : ''}>${p.name}</option>`).join('') : '<option>No hay jugadores</option>'}
-                            </select>
-                        </div>
-                    </header>
-                    <main class="p-4 md:p-8">${selectedPlayer ? renderPlayerDashboard(selectedPlayer) : '<div class="text-center text-gray-500 mt-10">Este equipo no tiene jugadores con estadísticas suficientes.</div>'}</main>
-                `;
-            }
-            appContainer.innerHTML = content;
-        }
-
-        function renderPlayerDashboard(player) {
-            const statData = player.stats[state.selectedStatKey];
-            const gameLog = statData.gameLog;
-            const seasonAvg = gameLog.reduce((s, g) => s + g.value, 0) / gameLog.length;
-            let propLine;
-            if (seasonAvg < 5) { propLine = (Math.floor(seasonAvg * 2) / 2) + 0.5; if (propLine % 1 === 0) propLine -= 0.5; } 
-            else { propLine = parseFloat((Math.round(seasonAvg * 1.95) / 2).toFixed(1)); }
-            const last10 = gameLog.slice(-10);
-            const avg10 = (last10.reduce((s, g) => s + g.value, 0) / last10.length).toFixed(1);
-            const last5 = gameLog.slice(-5);
-            const avg5 = (last5.reduce((s, g) => s + g.value, 0) / last5.length).toFixed(1);
-            const overCount10 = last10.filter(g => g.value > propLine).length;
-            const hitRate10 = ((overCount10 / last10.length) * 100).toFixed(0);
-            const maxVal = Math.max(...last10.map(g => g.value), propLine) * 1.25;
-            const groupedStats = Object.entries(player.stats).reduce((acc, [key, data]) => { const category = data.category || 'General'; if (!acc[category]) acc[category] = []; acc[category].push({ key, ...data }); return acc; }, {});
-            return `
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div class="lg:col-span-1 flex flex-col gap-6">
-                        <div class="bg-gray-800 p-6 rounded-lg shadow-lg flex items-center space-x-4">
-                            <img src="${player.headshot}" alt="${player.name}" class="w-24 h-24 rounded-full border-4 border-green-500 bg-gray-700"/>
-                            <div><h2 class="text-3xl font-bold text-white">${player.name}</h2><p class="text-gray-400">${player.position} | ${state.teams.find(t=>t.id === player.teamId).name}</p></div>
-                        </div>
-                        <div class="bg-gray-800 p-4 rounded-lg shadow-lg">
-                             <h3 class="text-lg font-semibold mb-3 text-white">Estadísticas Disponibles</h3>
-                             ${Object.entries(groupedStats).map(([category, stats]) => ` <div class="mb-2"><p class="text-xs text-gray-400 font-bold uppercase tracking-wider">${category}</p><div class="flex flex-wrap gap-2 mt-1">${stats.map(s => `<button onclick="handleStatChange('${s.key}')" class="px-3 py-1.5 text-sm font-medium rounded-md ${state.selectedStatKey === s.key ? 'bg-green-500 text-white' : 'bg-gray-700 hover:bg-gray-600'}">${s.displayName}</button>`).join('')}</div></div>`).join('')}
-                        </div>
-                        <div class="bg-gray-800 p-6 rounded-lg shadow-lg space-y-3">
-                            <h3 class="text-lg font-semibold text-white border-b border-gray-700 pb-2 mb-3">Insights Automáticos</h3>
-                            <p class="text-sm text-gray-300">📈 Superó la Línea de Base de <span class="font-semibold">${propLine}</span> en <span class="font-bold text-white">${overCount10} de ${last10.length}</span> juegos (${hitRate10}% de acierto).</p>
-                            <p class="text-sm text-gray-300">📊 Su promedio en los últimos 10 juegos es <span class="font-bold text-white">${avg10}</span> vs. <span class="font-bold text-white">${avg5}</span> en los últimos 5.</p>
-                        </div>
-                    </div>
-                    <div class="lg:col-span-2 flex flex-col gap-6">
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div class="bg-gray-800 p-4 rounded-lg shadow-md text-center"><p class="text-sm text-gray-400">Línea de Base</p><p class="text-2xl font-bold text-white">${propLine}</p></div>
-                            <div class="bg-gray-800 p-4 rounded-lg shadow-md text-center"><p class="text-sm text-gray-400">Promedio (10 J)</p><p class="text-2xl font-bold text-white">${avg10}</p></div>
-                            <div class="bg-gray-800 p-4 rounded-lg shadow-md text-center"><p class="text-sm text-gray-400">Promedio (5 J)</p><p class="text-2xl font-bold text-white">${avg5}</p></div>
-                            <div class="bg-gray-800 p-4 rounded-lg shadow-md text-center"><p class="text-sm text-gray-400">Tasa de Acierto</p><p class="text-2xl font-bold text-white">${hitRate10}%</p></div>
-                        </div>
-                        <div class="bg-gray-800 p-4 rounded-lg shadow-lg">
-                            <h3 class="text-lg font-semibold text-white mb-4">Rendimiento Histórico vs. Línea de Base</h3>
-                            <div class="h-64 flex items-end gap-1">
-                                ${generateYAxisHTML(propLine, maxVal)}
-                                <div class="flex-grow h-full flex justify-between items-end gap-1 md:gap-2 border-b border-gray-700 pb-1">
-                                    ${generateChartHTML(last10, propLine, maxVal)}
-                                </div>
-                            </div>
-                            <div class="mt-4 flex flex-wrap justify-center items-center gap-4 md:gap-6 text-xs text-gray-400">
-                                ${generateLegendHTML()}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
+        function updateLoadingMessage(msg) { state.loadingMessage = msg; const el = document.getElementById('loading-message'); if (el) el.textContent = msg; }
+        function renderApp() { const appContainer = document.getElementById('app'); let content; if (state.loading) { content = `<div class="loader-container"><div class="loader"></div><p id="loading-message" class="text-gray-400 mt-4 text-center px-4">${state.loadingMessage}</p></div>`; } else if (state.error) { content = `<div class="fixed inset-0 bg-red-800 text-white flex items-center justify-center p-4 text-center text-xl">${state.error}</div>`; } else { const teamPlayers = Object.values(state.players).filter(p => p.teamId === state.selectedTeamId).sort((a,b) => a.name.localeCompare(b.name)); const selectedPlayer = state.players[state.selectedPlayerId]; content = ` <header class="bg-gray-800 p-4 flex flex-col md:flex-row justify-between items-center shadow-lg sticky top-0 z-10 gap-4"> <h1 class="text-xl font-bold text-green-400 shrink-0"><span class="text-white">NFL</span> Props<span class="text-green-400">.</span>Analyzer</h1> <div class="flex items-center space-x-2 w-full max-w-lg"> <select onchange="handleTeamChange(this.value)" class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-green-500 block w-full p-2.5"> ${state.teams.map(t => `<option value="${t.id}" ${t.id === state.selectedTeamId ? 'selected' : ''}>${t.name}</option>`).join('')} </select> <select onchange="handlePlayerChange(this.value)" class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-green-500 block w-full p-2.5" ${!teamPlayers.length ? 'disabled' : ''}> ${teamPlayers.length ? teamPlayers.map(p => `<option value="${p.id}" ${p.id === state.selectedPlayerId ? 'selected' : ''}>${p.name}</option>`).join('') : '<option>No hay jugadores</option>'} </select> </div> </header> <main class="p-4 md:p-8">${selectedPlayer ? renderPlayerDashboard(selectedPlayer) : '<div class="text-center text-gray-500 mt-10">Este equipo no tiene jugadores con estadísticas suficientes.</div>'}</main> `; } appContainer.innerHTML = content; }
+        function renderPlayerDashboard(player) { const statData = player.stats[state.selectedStatKey]; const gameLog = statData.gameLog; const seasonAvg = gameLog.reduce((s, g) => s + g.value, 0) / gameLog.length; let propLine; if (seasonAvg < 5) { propLine = (Math.floor(seasonAvg * 2) / 2) + 0.5; if (propLine % 1 === 0) propLine -= 0.5; } else { propLine = parseFloat((Math.round(seasonAvg * 1.95) / 2).toFixed(1)); } const last10 = gameLog.slice(-10); const avg10 = (last10.reduce((s, g) => s + g.value, 0) / last10.length).toFixed(1); const last5 = gameLog.slice(-5); const avg5 = (last5.reduce((s, g) => s + g.value, 0) / last5.length).toFixed(1); const overCount10 = last10.filter(g => g.value > propLine).length; const hitRate10 = ((overCount10 / last10.length) * 100).toFixed(0); const maxVal = Math.max(...last10.map(g => g.value), propLine) * 1.25; const groupedStats = Object.entries(player.stats).reduce((acc, [key, data]) => { const category = data.category || 'General'; if (!acc[category]) acc[category] = []; acc[category].push({ key, ...data }); return acc; }, {}); return ` <div class="grid grid-cols-1 lg:grid-cols-3 gap-6"> <div class="lg:col-span-1 flex flex-col gap-6"> <div class="bg-gray-800 p-6 rounded-lg shadow-lg flex items-center space-x-4"> <img src="${player.headshot}" alt="${player.name}" class="w-24 h-24 rounded-full border-4 border-green-500 bg-gray-700"/> <div><h2 class="text-3xl font-bold text-white">${player.name}</h2><p class="text-gray-400">${player.position} | ${state.teams.find(t=>t.id === player.teamId).name}</p></div> </div> <div class="bg-gray-800 p-4 rounded-lg shadow-lg"> <h3 class="text-lg font-semibold mb-3 text-white">Estadísticas Disponibles</h3> ${Object.entries(groupedStats).map(([category, stats]) => ` <div class="mb-2"><p class="text-xs text-gray-400 font-bold uppercase tracking-wider">${category}</p><div class="flex flex-wrap gap-2 mt-1">${stats.map(s => `<button onclick="handleStatChange('${s.key}')" class="px-3 py-1.5 text-sm font-medium rounded-md ${state.selectedStatKey === s.key ? 'bg-green-500 text-white' : 'bg-gray-700 hover:bg-gray-600'}">${s.displayName}</button>`).join('')}</div></div>`).join('')} </div> <div class="bg-gray-800 p-6 rounded-lg shadow-lg space-y-3"> <h3 class="text-lg font-semibold text-white border-b border-gray-700 pb-2 mb-3">Insights Automáticos</h3> <p class="text-sm text-gray-300">📈 Superó la Línea de Base de <span class="font-semibold">${propLine}</span> en <span class="font-bold text-white">${overCount10} de ${last10.length}</span> juegos (${hitRate10}% de acierto).</p> <p class="text-sm text-gray-300">📊 Su promedio en los últimos 10 juegos es <span class="font-bold text-white">${avg10}</span> vs. <span class="font-bold text-white">${avg5}</span> en los últimos 5.</p> </div> </div> <div class="lg:col-span-2 flex flex-col gap-6"> <div class="grid grid-cols-2 md:grid-cols-4 gap-4"> <div class="bg-gray-800 p-4 rounded-lg shadow-md text-center"><p class="text-sm text-gray-400">Línea de Base</p><p class="text-2xl font-bold text-white">${propLine}</p></div> <div class="bg-gray-800 p-4 rounded-lg shadow-md text-center"><p class="text-sm text-gray-400">Promedio (10 J)</p><p class="text-2xl font-bold text-white">${avg10}</p></div> <div class="bg-gray-800 p-4 rounded-lg shadow-md text-center"><p class="text-sm text-gray-400">Promedio (5 J)</p><p class="text-2xl font-bold text-white">${avg5}</p></div> <div class="bg-gray-800 p-4 rounded-lg shadow-md text-center"><p class="text-sm text-gray-400">Tasa de Acierto</p><p class="text-2xl font-bold text-white">${hitRate10}%</p></div> </div> <div class="bg-gray-800 p-4 rounded-lg shadow-lg"> <h3 class="text-lg font-semibold text-white mb-4">Rendimiento Histórico vs. Línea de Base</h3> <div class="h-64 flex items-end gap-1"> ${generateYAxisHTML(propLine, maxVal)} <div class="flex-grow h-full flex justify-between items-end gap-1 md:gap-2 border-b border-gray-700 pb-1"> ${generateChartHTML(last10, propLine, maxVal)} </div> </div> <div class="mt-4 flex flex-wrap justify-center items-center gap-4 md:gap-6 text-xs text-gray-400"> ${generateLegendHTML()} </div> </div> </div> </div> `; }
         function generateYAxisHTML(propLine, maxVal) { const propLinePosition = (propLine / maxVal) * 100; return ` <div class="h-full w-12 text-xs text-gray-500 flex flex-col justify-between items-end pr-2 relative shrink-0"> <span>${Math.ceil(maxVal)}</span> <div class="absolute w-full text-right transform -translate-y-1/2" style="bottom: ${propLinePosition}%;"> <span class="bg-gray-800 px-1 text-yellow-400">${propLine}</span> </div> <span>0</span> </div> `; }
         function generateChartHTML(gameLog, propLine, maxVal) { return gameLog.map((game, index) => { const barHeight = (game.value / maxVal) * 100; const barColor = game.value >= propLine ? 'bg-green-500' : 'bg-red-500'; return ` <div class="flex-1 h-full flex flex-col justify-end items-center group relative"> <div class="absolute -top-5 bg-gray-600 text-white text-xs px-2 py-1 rounded-md tooltip"> ${game.value} </div> <div class="w-full chart-bar ${barColor}" style="height: ${barHeight}%;"></div> </div> `; }).join(''); }
         function generateLegendHTML() { return ` <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-sm bg-green-500"></div><span>Supera la línea</span></div> <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-sm bg-red-500"></div><span>No supera la línea</span></div> <div class="flex items-center gap-2"><div class="w-4 h-px border-t-2 border-dashed border-yellow-400"></div><span>Línea de Base</span></div> `; }
@@ -150,6 +99,7 @@
     </script>
 </body>
 </html>
+
 
 
 
