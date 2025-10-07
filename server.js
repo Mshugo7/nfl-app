@@ -15,7 +15,7 @@ let DB = {
 };
 
 // Función para buscar una estadística por nombre de forma segura
-const findStat = (statsArray, statName) => statsArray.find(s => s.name === statName)?.displayValue || '0';
+const findStat = (statsArray, statName) => statsArray?.find(s => s.name === statName)?.displayValue || '0';
 
 async function loadAndProcessData() {
     console.log("Cargando y procesando datos de la NFL en vivo...");
@@ -34,40 +34,52 @@ async function loadAndProcessData() {
 
             if (teamData.team.athletes) {
                 teamData.team.athletes.forEach(playerData => {
-                    if (playerData.position && ['QB', 'RB', 'WR', 'TE'].includes(playerData.position.abbreviation) && playerData.stats) {
-                        const stats = {};
-                        const gamesPlayed = parseInt(findStat(playerData.stats, 'gamesPlayed')) || 16;
-                        
-                        const passing = playerData.stats.find(s => s.name === 'passing');
-                        if (passing) {
-                            const pSplits = passing.splits.categories[0].stats;
-                            stats.passingYards = { displayName: 'Yardas por Pase', gameLog: generateGameLog(parseFloat(passing.displayValue) / gamesPlayed, 50, gamesPlayed), category: 'Pases' };
-                            stats.completions = { displayName: 'Pases Completados', gameLog: generateGameLog(parseFloat(findStat(pSplits, 'completions')) / gamesPlayed, 5, gamesPlayed), category: 'Pases' };
-                            stats.passingTDs = { displayName: 'TDs de Pase', gameLog: generateGameLog(parseFloat(findStat(pSplits, 'passingTouchdowns')) / gamesPlayed, 1, gamesPlayed), category: 'Pases' };
-                            stats.interceptions = { displayName: 'Intercepciones', gameLog: generateGameLog(parseFloat(findStat(pSplits, 'interceptions')) / gamesPlayed, 0.5, gamesPlayed), category: 'Pases' };
+                    try {
+                        if (playerData.position && ['QB', 'RB', 'WR', 'TE'].includes(playerData.position.abbreviation) && playerData.stats) {
+                            const stats = {};
+                            const gamesPlayed = parseInt(findStat(playerData.stats, 'gamesPlayed')) || 16;
+                            if (gamesPlayed === 0) return; // Saltar jugadores que no jugaron
+
+                            // --- Procesamiento de Pases ---
+                            const passing = playerData.stats.find(s => s.name === 'passing');
+                            const pSplits = passing?.splits?.categories?.[0]?.stats;
+                            if (passing && pSplits) {
+                                stats.passingYards = { displayName: 'Yardas por Pase', gameLog: generateGameLog(parseFloat(passing.displayValue) / gamesPlayed, 50, gamesPlayed), category: 'Pases' };
+                                stats.completions = { displayName: 'Pases Completados', gameLog: generateGameLog(parseFloat(findStat(pSplits, 'completions')) / gamesPlayed, 5, gamesPlayed), category: 'Pases' };
+                                stats.passingTDs = { displayName: 'TDs de Pase', gameLog: generateGameLog(parseFloat(findStat(pSplits, 'passingTouchdowns')) / gamesPlayed, 1, gamesPlayed), category: 'Pases' };
+                                stats.interceptions = { displayName: 'Intercepciones', gameLog: generateGameLog(parseFloat(findStat(pSplits, 'interceptions')) / gamesPlayed, 0.5, gamesPlayed), category: 'Pases' };
+                            }
+
+                            // --- Procesamiento de Carrera ---
+                            const rushing = playerData.stats.find(s => s.name === 'rushing');
+                            const rSplits = rushing?.splits?.categories?.[0]?.stats;
+                            if (rushing && rSplits) {
+                                stats.rushingYards = { displayName: 'Yardas por Carrera', gameLog: generateGameLog(parseFloat(rushing.displayValue) / gamesPlayed, 20, gamesPlayed), category: 'Carrera' };
+                                stats.rushingAttempts = { displayName: 'Acarreos', gameLog: generateGameLog(parseFloat(findStat(rSplits, 'rushingAttempts')) / gamesPlayed, 4, gamesPlayed), category: 'Carrera' };
+                            }
+
+                            // --- Procesamiento de Recepción ---
+                            const receiving = playerData.stats.find(s => s.name === 'receiving');
+                            const recSplits = receiving?.splits?.categories?.[0]?.stats;
+                            if (receiving && recSplits) {
+                                stats.receivingYards = { displayName: 'Yardas por Recepción', gameLog: generateGameLog(parseFloat(receiving.displayValue) / gamesPlayed, 25, gamesPlayed), category: 'Recepción' };
+                                stats.receptions = { displayName: 'Recepciones', gameLog: generateGameLog(parseFloat(findStat(recSplits, 'receptions')) / gamesPlayed, 3, gamesPlayed), category: 'Recepción' };
+                                stats.receivingTDs = { displayName: 'TDs de Recepción', gameLog: generateGameLog(parseFloat(findStat(recSplits, 'receivingTouchdowns')) / gamesPlayed, 0.5, gamesPlayed), category: 'Recepción' };
+                            }
+
+                            if (Object.keys(stats).length > 0) {
+                                players[playerData.id] = { id: playerData.id, name: playerData.displayName, position: playerData.position.abbreviation, headshot: playerData.headshot?.href || `https://ui-avatars.com/api/?name=${playerData.displayName.replace(' ','+')}&background=374151&color=fff`, teamId: teamData.team.id, stats: stats };
+                            }
                         }
-                        const rushing = playerData.stats.find(s => s.name === 'rushing');
-                        if (rushing) {
-                            const rSplits = rushing.splits.categories[0].stats;
-                            stats.rushingYards = { displayName: 'Yardas por Carrera', gameLog: generateGameLog(parseFloat(rushing.displayValue) / gamesPlayed, 20, gamesPlayed), category: 'Carrera' };
-                            stats.rushingAttempts = { displayName: 'Acarreos', gameLog: generateGameLog(parseFloat(findStat(rSplits, 'rushingAttempts')) / gamesPlayed, 4, gamesPlayed), category: 'Carrera' };
-                        }
-                        const receiving = playerData.stats.find(s => s.name === 'receiving');
-                        if (receiving) {
-                            const recSplits = receiving.splits.categories[0].stats;
-                            stats.receivingYards = { displayName: 'Yardas por Recepción', gameLog: generateGameLog(parseFloat(receiving.displayValue) / gamesPlayed, 25, gamesPlayed), category: 'Recepción' };
-                            stats.receptions = { displayName: 'Recepciones', gameLog: generateGameLog(parseFloat(findStat(recSplits, 'receptions')) / gamesPlayed, 3, gamesPlayed), category: 'Recepción' };
-                            stats.receivingTDs = { displayName: 'TDs de Recepción', gameLog: generateGameLog(parseFloat(findStat(recSplits, 'receivingTouchdowns')) / gamesPlayed, 0.5, gamesPlayed), category: 'Recepción' };
-                        }
-                        if (Object.keys(stats).length > 0) {
-                            players[playerData.id] = { id: playerData.id, name: playerData.displayName, position: playerData.position.abbreviation, headshot: playerData.headshot?.href || `https://ui-avatars.com/api/?name=${playerData.displayName.replace(' ','+')}&background=374151&color=fff`, teamId: teamData.team.id, stats: stats };
-                        }
+                    } catch (e) {
+                        // Si un jugador falla, lo registramos pero continuamos con el siguiente
+                        console.error(`No se pudo procesar al jugador ${playerData.displayName}:`, e);
                     }
                 });
             }
         });
         DB = { teams: teams.sort((a,b) => a.name.localeCompare(b.name)), players };
-        console.log("Base de datos de la NFL cargada y procesada exitosamente.");
+        console.log(`Base de datos de la NFL cargada. ${Object.keys(players).length} jugadores procesados.`);
     } catch (error) {
         console.error("FALLO CRÍTICO al cargar la base de datos de la NFL:", error);
     }
